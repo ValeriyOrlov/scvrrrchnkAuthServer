@@ -17,11 +17,11 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot connect to database")
 	}
-	_ = db
 
 	if err := database.RunMigrations(db); err != nil {
 		logrus.WithError(err).Fatal("migration failed")
 	}
+
 	app := fiber.New()
 
 	logrus.Infof("Starting server on port %s", cfg.Port)

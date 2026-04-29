@@ -1,0 +1,42 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/model"
+	"gorm.io/gorm"
+)
+
+var ErrUserAlreadyExists = errors.New("user already exists")
+
+type UserRepository interface {
+	Create(ctx context.Context, email, username, passwordHash string) (model.User, error)
+}
+
+type GormUserRepo struct {
+	db *gorm.DB
+}
+
+func NewGormUserRepo(db *gorm.DB) *GormUserRepo {
+	return &GormUserRepo{db: db}
+}
+
+func (r *GormUserRepo) Create(ctx context.Context, email, username, passwordHash string) (model.User, error) {
+	user := model.User{
+		Email:        email,
+		Username:     username,
+		PasswordHash: passwordHash,
+	}
+	result := r.db.WithContext(ctx).Create(&user)
+	// тут ловим дубликат или остальные ошибки БД
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return model.User{}, ErrUserAlreadyExists
+		}
+		return model.User{}, fmt.Errorf("create user in repository: %w", result.Error)
+	}
+
+	return user, nil
+}
