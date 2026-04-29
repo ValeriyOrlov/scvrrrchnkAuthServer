@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/config"
-	database "github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/db"
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/database"
 	"github.com/gofiber/fiber/v2"
 	"github.com/sirupsen/logrus"
 )
@@ -18,6 +18,10 @@ func main() {
 		logrus.WithError(err).Fatal("cannot connect to database")
 	}
 	_ = db
+
+	if err := database.RunMigrations(db); err != nil {
+		logrus.WithError(err).Fatal("migration failed")
+	}
 	app := fiber.New()
 
 	logrus.Infof("Starting server on port %s", cfg.Port)
