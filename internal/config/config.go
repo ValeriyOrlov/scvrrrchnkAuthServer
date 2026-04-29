@@ -12,12 +12,29 @@ type Config struct {
 	DatabaseDSN string
 }
 
+type DBConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
 func Load() (*Config, error) {
-	godotenv.Load()
+	_ = godotenv.Load()
+	var dbCfg DBConfig
+	dbCfg.Host = getEnv("DB_HOST", "localhost")
+	dbCfg.Port = getEnv("DB_PORT", "5432")
+	dbCfg.User = getEnv("DB_USER", "postgres")
+	dbCfg.Password = getEnv("DB_PASSWORD", "")
+	dbCfg.DBName = getEnv("DB_NAME", "auth")
+	dbCfg.SSLMode = getEnv("DB_SSLMODE", "disable")
 	cfg := &Config{
-		Port:        getEnv("APP_PORT", fmt.Sprintf(":%s", os.Getenv("APP_PORT"))),
-		DatabaseDSN: getEnv("DB_DSN", fmt.Sprintf("user=%s password=%s dbname=%s host=%s sslmode=disable", os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_HOST"))),
+		Port:        getEnv("APP_PORT", "8080"),
+		DatabaseDSN: fmt.Sprintf("user=%s password=%s dbname=%s host=%s port=%s sslmode=%s", dbCfg.User, dbCfg.Password, dbCfg.DBName, dbCfg.Host, dbCfg.Port, dbCfg.SSLMode),
 	}
+	cfg.Port = ":" + cfg.Port
 	return cfg, nil
 }
 
