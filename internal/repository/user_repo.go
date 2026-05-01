@@ -9,10 +9,14 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrUserAlreadyExists = errors.New("user already exists")
+var (
+	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrUserNotFound      = errors.New("user not found")
+)
 
 type UserRepository interface {
 	Create(ctx context.Context, email, username, passwordHash string) (model.User, error)
+	FindByEmail(ctx context.Context, email string) (model.User, error)
 }
 
 type GormUserRepo struct {
@@ -38,5 +42,17 @@ func (r *GormUserRepo) Create(ctx context.Context, email, username, passwordHash
 		return model.User{}, fmt.Errorf("create user in repository: %w", result.Error)
 	}
 
+	return user, nil
+}
+
+func (r *GormUserRepo) FindByEmail(ctx context.Context, email string) (model.User, error) {
+	user := model.User{}
+	result := r.db.WithContext(ctx).Where("email = ?", email).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return model.User{}, ErrUserNotFound
+		}
+		return model.User{}, fmt.Errorf("find user by email: %w", result.Error)
+	}
 	return user, nil
 }
