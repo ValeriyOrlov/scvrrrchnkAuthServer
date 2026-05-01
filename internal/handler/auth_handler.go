@@ -1,0 +1,50 @@
+package handler
+
+import (
+	"errors"
+
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/service"
+	"github.com/gofiber/fiber/v2"
+)
+
+type AuthHandler struct {
+	authService *service.AuthService
+}
+
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+	return &AuthHandler{authService: authService}
+}
+
+func (h *AuthHandler) Register(c *fiber.Ctx) error {
+	var req RegisterRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+	}
+	ctx := c.Context()
+	user, err := h.authService.Register(ctx, req.Email, req.Username, req.Password)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidEmail) {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if errors.Is(err, service.ErrShortUsername) {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if errors.Is(err, service.ErrWeakPassword) {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		if errors.Is(err, service.ErrUserAlreadyExists) {
+			return c.Status(409).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(200).JSON(user)
+}

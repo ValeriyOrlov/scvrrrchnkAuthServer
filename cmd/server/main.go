@@ -1,11 +1,30 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/config"
 	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/database"
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/handler"
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/repository"
+	"github.com/ValeriyOrlov/scvrrrchnkAuthServer/internal/service"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	recoverware "github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/sirupsen/logrus"
 )
+
+var log = logrus.New()
+
+type logrusWriter struct {
+	logger *logrus.Logger
+}
+
+func (w *logrusWriter) Write(p []byte) (n int, err error) {
+	message := strings.TrimSpace(string(p))
+	w.logger.Info(message)
+	return len(p), nil
+}
 
 func main() {
 	cfg, err := config.Load()
@@ -22,7 +41,19 @@ func main() {
 		logrus.WithError(err).Fatal("migration failed")
 	}
 
+	userRepo := repository.NewGormUserRepo(db)
+	authService := service.NewAuthService(userRepo)
+	authHandler := handler.NewAuthHandler(authService)
+
 	app := fiber.New()
+	app.Use(recoverware.New(recoverware.Config{
+		EnableStackTrace: true,
+	}))
+
+	app.Use(logger.New(logger.Config{
+		Output: &logrusWriter{logger: log},
+	}))
+	app.Post("/register", authHandler.Register)
 
 	logrus.Infof("Starting server on port %s", cfg.Port)
 	if err := app.Listen(cfg.Port); err != nil {
