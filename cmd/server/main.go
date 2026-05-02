@@ -63,6 +63,7 @@ func main() {
 	app.Post("/register", authHandler.Register)
 	app.Post("/login", authHandler.Login)
 	app.Post("/refresh", authHandler.Refresh)
+	app.Post("/logout", authHandler.Logout)
 
 	app.Get("/me", handler.AuthRequired(cfg.JWTSecret), func(c *fiber.Ctx) error {
 		userID := c.Locals("user_id")

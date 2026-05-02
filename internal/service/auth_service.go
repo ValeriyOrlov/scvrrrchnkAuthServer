@@ -180,3 +180,17 @@ func (s *AuthService) createTokenPair(ctx context.Context, userID uint) (string,
 	}
 	return signedAccess, signedRefresh, nil
 }
+
+func (s *AuthService) Logout(ctx context.Context, refreshTokenStr string) error {
+	_, err := s.tokenRepo.FindByToken(ctx, refreshTokenStr)
+	if err != nil {
+		if errors.Is(err, repository.ErrTokenNotFound) {
+			return nil
+		}
+		return fmt.Errorf("logout error: %w", err)
+	}
+	if err := s.tokenRepo.DeleteByToken(ctx, refreshTokenStr); err != nil {
+		return err
+	}
+	return nil
+}

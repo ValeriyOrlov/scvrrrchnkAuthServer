@@ -98,3 +98,16 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 		"token_type":    "bearer",
 	})
 }
+
+func (h *AuthHandler) Logout(c *fiber.Ctx) error {
+	var req RefreshRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bad request"})
+	}
+
+	if err := h.authService.Logout(c.Context(), req.RefreshToken); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "logged out"})
+}
