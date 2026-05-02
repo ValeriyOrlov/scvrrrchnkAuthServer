@@ -42,7 +42,14 @@ func main() {
 	}
 
 	userRepo := repository.NewGormUserRepo(db)
-	authService := service.NewAuthService(userRepo)
+	tokenRepo := repository.NewGormTokenRepo(db)
+	authService := service.NewAuthService(
+		userRepo,
+		tokenRepo,
+		cfg.JWTSecret,
+		cfg.AccessTokenTTL,
+		cfg.RefreshTokenTTL,
+	)
 	authHandler := handler.NewAuthHandler(authService)
 
 	app := fiber.New()
@@ -54,6 +61,12 @@ func main() {
 		Output: &logrusWriter{logger: log},
 	}))
 	app.Post("/register", authHandler.Register)
+	app.Post("/login", authHandler.Login)
+
+	app.Get("/me", handler.AuthRequired(cfg.JWTSecret), func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id")
+		return c.JSON(fiber.Map{"user_id": userID})
+	})
 
 	logrus.Infof("Starting server on port %s", cfg.Port)
 	if err := app.Listen(cfg.Port); err != nil {

@@ -15,6 +15,7 @@ type TokenRepository interface {
 	Create(ctx context.Context, token *model.RefreshToken) error
 	FindByToken(ctx context.Context, tokenStr string) (*model.RefreshToken, error)
 	DeleteByUserID(ctx context.Context, userID uint) error
+	DeleteByToken(ctx context.Context, tokenStr string) error
 }
 
 type GormTokenRepo struct {
@@ -49,6 +50,14 @@ func (r *GormTokenRepo) DeleteByUserID(ctx context.Context, userID uint) error {
 	result := r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&model.RefreshToken{})
 	if result.Error != nil {
 		return fmt.Errorf("delete user by id: %w", result.Error)
+	}
+	return nil
+}
+
+func (r *GormTokenRepo) DeleteByToken(ctx context.Context, tokenStr string) error {
+	result := r.db.WithContext(ctx).Where("token = ?", tokenStr).Delete(&model.RefreshToken{})
+	if result.Error != nil {
+		return fmt.Errorf("delete token by token string: %w", result.Error)
 	}
 	return nil
 }

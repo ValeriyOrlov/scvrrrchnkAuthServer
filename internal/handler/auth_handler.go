@@ -17,6 +17,11 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
@@ -46,5 +51,25 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
-	return c.Status(200).JSON(user)
+	return c.Status(fiber.StatusCreated).JSON(user)
+}
+
+func (h *AuthHandler) Login(c *fiber.Ctx) error {
+	var req LoginRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+	}
+	ctx := c.Context()
+	accesToken, refreshToken, err := h.authService.Login(ctx, req.Email, req.Password)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"access_token":  accesToken,
+		"refresh_token": refreshToken,
+		"token_type":    "bearer",
+	})
 }
