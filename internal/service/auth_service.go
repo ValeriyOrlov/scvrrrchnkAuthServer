@@ -15,12 +15,13 @@ import (
 )
 
 var (
-	ErrInvalidInput       = errors.New("invalid input")
-	ErrInvalidEmail       = errors.New("invalid email")
-	ErrWeakPassword       = errors.New("min 8 characters")
-	ErrShortUsername      = errors.New("min 3 characters")
-	ErrUserAlreadyExists  = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidInput        = errors.New("invalid input")
+	ErrInvalidEmail        = errors.New("invalid email")
+	ErrWeakPassword        = errors.New("min 8 characters")
+	ErrShortUsername       = errors.New("min 3 characters")
+	ErrUserAlreadyExists   = errors.New("user already exists")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 )
 
 type AuthService struct {
@@ -89,35 +90,86 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", "", fmt.Errorf("comparing hash and password: %w", err)
 	}
 
-	claims := jwt.MapClaims{
-		"user_id": user.ID,
+	accessToken, refreshToken, err := s.createTokenPair(ctx, user.ID)
+	if err != nil {
+		return "", "", fmt.Errorf("create token pair error: %w", err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *AuthService) Refresh(ctx context.Context, refreshTokenStr string) (newAccess, newRefresh string, err error) {
+	token, err := jwt.Parse(refreshTokenStr, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(s.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", "", ErrInvalidRefreshToken
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", ErrInvalidRefreshToken
+	}
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		return "", "", ErrInvalidRefreshToken
+	}
+	userID := uint(userIDFloat)
+
+	// Ищем в базе
+	_, err = s.tokenRepo.FindByToken(ctx, refreshTokenStr)
+	if errors.Is(err, repository.ErrTokenNotFound) {
+		return "", "", ErrInvalidRefreshToken
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("refresh: find token: %w", err)
+	}
+
+	// Удаляем старый
+	if err := s.tokenRepo.DeleteByToken(ctx, refreshTokenStr); err != nil {
+		return "", "", fmt.Errorf("refresh: delete old token: %w", err)
+	}
+	accessToken, refreshToken, err := s.createTokenPair(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("create token pair error: %w", err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *AuthService) createTokenPair(ctx context.Context, userID uint) (string, string, error) {
+	accessClaims := jwt.MapClaims{
+		"user_id": userID,
 		"exp":     time.Now().Add(s.accessTTL).Unix(),
 		"iat":     time.Now().Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	accessToken, err := token.SignedString([]byte(s.jwtSecret))
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	signedAccess, err := accessToken.SignedString([]byte(s.jwtSecret))
 	if err != nil {
-		return "", "", fmt.Errorf("generate access token: %w", err)
+		return "", "", fmt.Errorf("sign access token: %w", err)
 	}
 
 	jti := uuid.New().String()
 	refreshExpAt := time.Now().Add(s.refreshTTL)
 	refreshClaims := jwt.MapClaims{
-		"user_id": user.ID,
-		"exp":     refreshExpAt,
+		"user_id": userID,
+		"exp":     refreshExpAt.Unix(),
 		"iat":     time.Now().Unix(),
 		"jti":     jti,
 	}
 
-	token = jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshToken, err := token.SignedString([]byte(s.jwtSecret))
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	signedRefresh, err := refreshToken.SignedString([]byte(s.jwtSecret))
 	if err != nil {
-		return "", "", fmt.Errorf("generate refresh token: %w", err)
+		return "", "", fmt.Errorf("sign refresh token: %w", err)
 	}
 
 	refreshModel := model.RefreshToken{
-		UserID:    user.ID,
-		Token:     refreshToken,
+		UserID:    userID,
+		Token:     signedRefresh,
 		ExpiresAt: refreshExpAt,
 	}
 
@@ -126,5 +178,5 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		return "", "", fmt.Errorf("adding refresh token to bd: %w", err)
 
 	}
-	return accessToken, refreshToken, nil
+	return signedAccess, signedRefresh, nil
 }

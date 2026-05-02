@@ -22,6 +22,10 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
 func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
@@ -60,7 +64,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
 	}
 	ctx := c.Context()
-	accesToken, refreshToken, err := h.authService.Login(ctx, req.Email, req.Password)
+	accessToken, refreshToken, err := h.authService.Login(ctx, req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidCredentials) {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
@@ -68,7 +72,28 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"access_token":  accesToken,
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"token_type":    "bearer",
+	})
+}
+
+func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
+	var req RefreshRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bad request"})
+	}
+
+	accessToken, refreshToken, err := h.authService.Refresh(c.Context(), req.RefreshToken)
+	if err != nil {
+		if errors.Is(err, service.ErrInvalidRefreshToken) {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"access_token":  accessToken,
 		"refresh_token": refreshToken,
 		"token_type":    "bearer",
 	})
