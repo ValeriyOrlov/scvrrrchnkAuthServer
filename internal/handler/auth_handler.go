@@ -30,30 +30,35 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
+// mapServiceError преобразует ошибки сервиса в коды состояния HTTP
+func mapServiceError(err error) (int, string) {
+	switch {
+	case errors.Is(err, service.ErrInvalidEmail),
+		errors.Is(err, service.ErrInvalidInput),
+		errors.Is(err, service.ErrShortUsername),
+		errors.Is(err, service.ErrWeakPassword):
+		return fiber.StatusBadRequest, err.Error()
+	case errors.Is(err, service.ErrUserAlreadyExists):
+		return fiber.StatusConflict, err.Error()
+	case errors.Is(err, service.ErrInvalidCredentials),
+		errors.Is(err, service.ErrInvalidRefreshToken):
+		return fiber.StatusUnauthorized, err.Error()
+	default:
+		return fiber.StatusInternalServerError, "internal error"
+	}
+}
+
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "invalid request"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 	ctx := c.Context()
 	user, err := h.authService.Register(ctx, req.Email, req.Username, req.Password)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidEmail) {
-			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrInvalidInput) {
-			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrShortUsername) {
-			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrWeakPassword) {
-			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-		}
-		if errors.Is(err, service.ErrUserAlreadyExists) {
-			return c.Status(409).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 	return c.Status(fiber.StatusCreated).JSON(user)
 }
@@ -61,15 +66,14 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 	ctx := c.Context()
 	accessToken, refreshToken, err := h.authService.Login(ctx, req.Email, req.Password)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidCredentials) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"access_token":  accessToken,
@@ -81,15 +85,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 	var req RefreshRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bad request"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 
 	accessToken, refreshToken, err := h.authService.Refresh(c.Context(), req.RefreshToken)
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidRefreshToken) {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -102,11 +105,13 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	var req RefreshRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "bad request"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 
 	if err := h.authService.Logout(c.Context(), req.RefreshToken); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
+		status, msg := mapServiceError(err)
+		return c.Status(status).JSON(fiber.Map{"error": msg})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "logged out"})
